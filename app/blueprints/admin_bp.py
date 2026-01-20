@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 import datetime
 from ..extensions import db
 from ..models import PaymentRequest, Evidence, Estado, Sociedad
 from ..services.telegram import send_message
 from sqlalchemy import or_, func
+from zoneinfo import ZoneInfo
 
 admin_bp = Blueprint("admin_bp", __name__)
 
@@ -94,16 +95,26 @@ def admin():
                 PaymentRequest.sucursal.like(like),
             )
         )
+    tz_name = current_app.config.get("TIMEZONE", "America/Bogota")
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = datetime.timezone.utc
     if desde_str:
         try:
-            d = datetime.datetime.strptime(desde_str, "%Y-%m-%d")
-            base = base.filter(PaymentRequest.created_at >= d)
+            d_local = datetime.datetime.strptime(desde_str, "%Y-%m-%d").replace(tzinfo=tz)
+            d_utc = d_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            base = base.filter(PaymentRequest.created_at >= d_utc)
         except Exception:
             pass
     if hasta_str:
         try:
-            h = datetime.datetime.strptime(hasta_str, "%Y-%m-%d") + datetime.timedelta(days=1)
-            base = base.filter(PaymentRequest.created_at < h)
+            h_local = (
+                datetime.datetime.strptime(hasta_str, "%Y-%m-%d")
+                + datetime.timedelta(days=1)
+            ).replace(tzinfo=tz)
+            h_utc = h_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            base = base.filter(PaymentRequest.created_at < h_utc)
         except Exception:
             pass
     # Filtro sociedad (en agregados)
@@ -160,17 +171,22 @@ def admin():
                 PaymentRequest.sucursal.like(like),
             )
         )
-    # Filtros de fecha (UTC) en created_at
+    # Filtros de fecha interpretados en zona local y convertidos a UTC
     if desde_str:
         try:
-            d = datetime.datetime.strptime(desde_str, "%Y-%m-%d")
-            query = query.filter(PaymentRequest.created_at >= d)
+            d_local = datetime.datetime.strptime(desde_str, "%Y-%m-%d").replace(tzinfo=tz)
+            d_utc = d_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            query = query.filter(PaymentRequest.created_at >= d_utc)
         except Exception:
             pass
     if hasta_str:
         try:
-            h = datetime.datetime.strptime(hasta_str, "%Y-%m-%d") + datetime.timedelta(days=1)
-            query = query.filter(PaymentRequest.created_at < h)
+            h_local = (
+                datetime.datetime.strptime(hasta_str, "%Y-%m-%d")
+                + datetime.timedelta(days=1)
+            ).replace(tzinfo=tz)
+            h_utc = h_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            query = query.filter(PaymentRequest.created_at < h_utc)
         except Exception:
             pass
     if soc_val is not None:
@@ -187,6 +203,23 @@ def admin():
         .limit(per_page)
         .all()
     )
+
+    # Formateo local de timestamps para la vista
+    for p in pagos:
+        try:
+            if p.created_at:
+                _c = p.created_at.replace(tzinfo=datetime.timezone.utc).astimezone(tz)
+                p.created_local_str = _c.strftime("%Y-%m-%d %H:%M")
+            else:
+                p.created_local_str = None
+            if p.updated_at:
+                _u = p.updated_at.replace(tzinfo=datetime.timezone.utc).astimezone(tz)
+                p.updated_local_str = _u.strftime("%Y-%m-%d %H:%M")
+            else:
+                p.updated_local_str = None
+        except Exception:
+            p.created_local_str = None
+            p.updated_local_str = None
 
     return render_template(
         "admin.html",
@@ -294,16 +327,26 @@ def export_payments_excel():
                 PaymentRequest.sucursal.like(like),
             )
         )
+    tz_name = current_app.config.get("TIMEZONE", "America/Bogota")
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = datetime.timezone.utc
     if desde_str:
         try:
-            d = datetime.datetime.strptime(desde_str, "%Y-%m-%d")
-            q = q.filter(PaymentRequest.created_at >= d)
+            d_local = datetime.datetime.strptime(desde_str, "%Y-%m-%d").replace(tzinfo=tz)
+            d_utc = d_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            q = q.filter(PaymentRequest.created_at >= d_utc)
         except Exception:
             pass
     if hasta_str:
         try:
-            h = datetime.datetime.strptime(hasta_str, "%Y-%m-%d") + datetime.timedelta(days=1)
-            q = q.filter(PaymentRequest.created_at < h)
+            h_local = (
+                datetime.datetime.strptime(hasta_str, "%Y-%m-%d")
+                + datetime.timedelta(days=1)
+            ).replace(tzinfo=tz)
+            h_utc = h_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            q = q.filter(PaymentRequest.created_at < h_utc)
         except Exception:
             pass
     if sociedad_str in [s.value for s in Sociedad]:
@@ -341,6 +384,8 @@ def export_payments_excel():
         "Motivo rechazo",
         "Creado UTC",
         "Actualizado UTC",
+        "Creado (local)",
+        "Actualizado (local)",
         "Telegram User ID",
         "Chat ID respuesta",
         "Evidencias (archivos)",
@@ -370,6 +415,18 @@ def export_payments_excel():
                 p.motivo_rechazo or "",
                 (p.created_at.isoformat(sep=" ") if p.created_at else ""),
                 (p.updated_at.isoformat(sep=" ") if p.updated_at else ""),
+                (
+                    p.created_at and p.created_at.replace(tzinfo=datetime.timezone.utc)
+                    .astimezone(tz)
+                    .strftime("%Y-%m-%d %H:%M")
+                    or ""
+                ),
+                (
+                    p.updated_at and p.updated_at.replace(tzinfo=datetime.timezone.utc)
+                    .astimezone(tz)
+                    .strftime("%Y-%m-%d %H:%M")
+                    or ""
+                ),
                 p.telegram_user_id or "",
                 p.chat_id_respuesta or "",
                 evids,
@@ -381,7 +438,7 @@ def export_payments_excel():
         for cell in row:
             cell.number_format = "#,##0"
 
-    widths = [8, 28, 14, 22, 22, 18, 14, 12, 28, 20, 20, 16, 16, 36]
+    widths = [8, 28, 14, 22, 22, 18, 14, 12, 28, 20, 20, 18, 18, 16, 16, 36]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

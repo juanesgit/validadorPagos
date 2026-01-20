@@ -107,75 +107,399 @@
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
+      <table class="table table-hover table-sm align-middle mb-0">
         <thead class="table-light">
           <tr>
-            <th>ID</th>
-            <th>Cliente</th>
-            <th>Valor</th>
-            <th>Medio</th>
-            <th>Sucursal</th>
-            <th>F. consignación</th>
-            <th>Sociedad</th>
-            <th>Estado</th>
-            <th>Evidencias</th>
-            <th style="width: 340px;" class="text-end">Acciones</th>
+            <th class="col-id text-nowrap">ID</th>
+            <th class="col-cliente">Cliente</th>
+            <th class="col-valor text-end text-nowrap">Valor</th>
+            <th class="col-medio text-nowrap">Medio</th>
+            <th class="col-sucursal">Sucursal</th>
+            <th class="col-fcons text-nowrap">F. consignación</th>
+            <th class="d-none d-md-table-cell col-soc text-nowrap">Sociedad</th>
+            <th class="d-none d-lg-table-cell text-nowrap">Creado (local)</th>
+            <th class="d-none d-lg-table-cell text-nowrap">Actualizado (local)</th>
+            <th class="col-estado text-nowrap">Estado</th>
+            <th class="col-evid text-center d-none d-sm-table-cell">Evidencias</th>
+            <th class="col-actions text-end">Acciones</th>
           </tr>
         </thead>
         <tbody>
         {% for p in pagos %}
           <tr>
-            <td>#{{ p.id }}</td>
-            <td>{{ p.cliente or p.referencia }}</td>
-            <td>${{ "{:,}".format(p.valor or 0) }}</td>
-            <td>{{ p.medio_pago }}</td>
-            <td>{{ p.sucursal }}</td>
-            <td>{{ p.fecha_consignacion.isoformat() if p.fecha_consignacion else '—' }}</td>
-            <td>{{ p.sociedad.value if p.sociedad else '—' }}</td>
-            <td>
+            <td class="col-id text-nowrap">#{{ p.id }}</td>
+            <td class="col-cliente text-break">{{ p.cliente or p.referencia }}</td>
+            <td class="col-valor text-end text-nowrap">${{ "{:,}".format(p.valor or 0) }}</td>
+            <td class="col-medio text-nowrap">{{ p.medio_pago }}</td>
+            <td class="col-sucursal text-break">{{ p.sucursal }}</td>
+            <td class="col-fcons text-nowrap">{{ p.fecha_consignacion.isoformat() if p.fecha_consignacion else '—' }}</td>
+            <td class="d-none d-md-table-cell col-soc text-nowrap">{{ p.sociedad.value if p.sociedad else '—' }}</td>
+            <td class="d-none d-lg-table-cell text-nowrap">{{ p.created_local_str or '—' }}</td>
+            <td class="d-none d-lg-table-cell text-nowrap">{{ p.updated_local_str or '—' }}</td>
+            <td class="col-estado text-nowrap">
               <span class="badge {{ 'bg-secondary' if p.estado.value=='PENDIENTE' else ('bg-success' if p.estado.value=='APROBADO' else 'bg-danger') }}">
                 {{ p.estado.value }}
               </span>
             </td>
-            <td>
-              {% if p.evidences|length == 0 %}
-                <span class="text-muted">—</span>
+            <td class="col-evid text-center d-none d-sm-table-cell">
+              {% set cnt = p.evidences|length %}
+              {% if cnt > 0 %}
+                <a href="#" class="badge bg-primary text-decoration-none"
+                   data-bs-toggle="modal" data-bs-target="#modalEvid-{{ p.id }}"
+                   title="Ver imágenes">{{ cnt }}</a>
               {% else %}
-                {% for ev in p.evidences %}
-                  <a class="btn btn-link btn-sm p-0 me-2"
-                     href="{{ url_for('admin_bp.evidence_view', evid_id=ev.id) }}"
-                     target="_blank">Ver {{ loop.index }}</a>
-                {% endfor %}
+                <span class="badge bg-secondary">0</span>
               {% endif %}
             </td>
-            <td class="text-end">
+            <td class="col-actions text-end">
               {% if p.estado.value == 'PENDIENTE' %}
-              <!-- Un solo form con dos acciones (formaction) para evitar problemas de sesión o forms anidados -->
-              <form method="post" class="d-inline-block m-0 p-0">
-                <div class="d-inline-flex flex-wrap gap-2 justify-content-end align-items-center">
-                  <div class="input-group input-group-sm" style="width: 260px;">
-                    <input name="motivo" class="form-control" placeholder="Motivo rechazo">
-                    <button type="submit" class="btn btn-danger"
-                            formaction="{{ url_for('admin_bp.reject', pid=p.id) }}">
-                      Rechazar
-                    </button>
-                  </div>
-                  <button type="submit" class="btn btn-success btn-sm"
-                          formaction="{{ url_for('admin_bp.approve', pid=p.id) }}">
-                    Aprobar
+                <div class="btn-group">
+                  <button type="button" class="btn btn-success btn-sm btn-approve"
+                          data-approve-url="{{ url_for('admin_bp.approve', pid=p.id) }}"
+                          data-pid="{{ p.id }}">Aprobar</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span class="visually-hidden">Toggle</span>
                   </button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">Detalles</a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#modalRechazo-{{ p.id }}">Rechazar…</a>
+                    </li>
+                  </ul>
                 </div>
-              </form>
+                <form method="post" id="form-{{ p.id }}" class="d-none">
+                  <input type="hidden" name="motivo" id="motivo-{{ p.id }}">
+                </form>
               {% else %}
-                <span class="text-muted small">—</span>
+                <div class="btn-group">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">Detalles</button>
+                </div>
               {% endif %}
             </td>
           </tr>
+          <!-- Modal Detalles -->
+          <div class="modal fade" id="modalPago-{{ p.id }}" tabindex="-1" aria-labelledby="modalPagoLabel-{{ p.id }}" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-scrollable">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="modalPagoLabel-{{ p.id }}">Detalle de pago #{{ p.id }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <dl class="row mb-0">
+                    <dt class="col-5">Cliente</dt><dd class="col-7">{{ p.cliente or p.referencia }}</dd>
+                    <dt class="col-5">Valor</dt><dd class="col-7">${{ "{:,}".format(p.valor or 0) }}</dd>
+                    <dt class="col-5">Medio</dt><dd class="col-7">{{ p.medio_pago }}</dd>
+                    <dt class="col-5">Sucursal</dt><dd class="col-7">{{ p.sucursal }}</dd>
+                    <dt class="col-5">Sociedad</dt><dd class="col-7">{{ p.sociedad.value if p.sociedad else '—' }}</dd>
+                    <dt class="col-5">F. consignación</dt><dd class="col-7">{{ p.fecha_consignacion.isoformat() if p.fecha_consignacion else '—' }}</dd>
+                    <dt class="col-5">Estado</dt><dd class="col-7">{{ p.estado.value }}</dd>
+                    <dt class="col-5">Creado (local)</dt><dd class="col-7">{{ p.created_local_str or '—' }}</dd>
+                    <dt class="col-5">Actualizado (local)</dt><dd class="col-7">{{ p.updated_local_str or '—' }}</dd>
+                    <dt class="col-5">Creado UTC</dt><dd class="col-7">{{ p.created_at.isoformat(sep=' ') if p.created_at else '—' }}</dd>
+                    <dt class="col-5">Actualizado UTC</dt><dd class="col-7">{{ p.updated_at.isoformat(sep=' ') if p.updated_at else '—' }}</dd>
+                  </dl>
+                  <hr>
+                  <div>
+                    <div class="fw-semibold mb-2">Evidencias</div>
+                    {% if p.evidences|length == 0 %}
+                      <span class="text-muted">—</span>
+                    {% else %}
+                      <ul class="list-unstyled mb-0">
+                        {% for ev in p.evidences %}
+                          <li>
+                            <a href="{{ url_for('admin_bp.evidence_view', evid_id=ev.id) }}" target="_blank">Ver {{ loop.index }} ({{ ev.filename }})</a>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Modal Rechazo -->
+          <div class="modal fade" id="modalRechazo-{{ p.id }}" tabindex="-1" aria-labelledby="modalRechazoLabel-{{ p.id }}" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="modalRechazoLabel-{{ p.id }}">Rechazar pago #{{ p.id }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3">
+                    <label class="form-label">Motivo</label>
+                    <textarea class="form-control" id="modal-motivo-{{ p.id }}" rows="3" placeholder="Describe el motivo de rechazo" required></textarea>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                  <button type="button" class="btn btn-danger btn-reject-confirm"
+                          data-reject-url="{{ url_for('admin_bp.reject', pid=p.id) }}"
+                          data-pid="{{ p.id }}">Rechazar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Modal Imágenes -->
+          <div class="modal fade" id="modalEvid-{{ p.id }}" tabindex="-1" aria-labelledby="modalEvidLabel-{{ p.id }}" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="modalEvidLabel-{{ p.id }}">Imágenes del pago #{{ p.id }}</h5>
+                  <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                </div>
+                <div class="modal-body">
+                  <div id="carouselEvid-{{ p.id }}" class="carousel slide" data-bs-ride="false">
+                    <div class="carousel-inner">
+                      {% set ns = namespace(count=0) %}
+                      {% for ev in p.evidences %}
+                        {% set fname = (ev.filename or '')|lower %}
+                        {% if fname.endswith('.jpg') or fname.endswith('.jpeg') or fname.endswith('.png') %}
+                          {% set ns.count = ns.count + 1 %}
+                          <div class="carousel-item {{ 'active' if ns.count == 1 else '' }}">
+                            <div class="evid-view" style="height:70vh; overflow:auto; background:#000; display:flex; align-items:center; justify-content:center;">
+                              <img src="{{ url_for('admin_bp.evidence_view', evid_id=ev.id) }}" class="evid-img img-fit" alt="Evidencia {{ ns.count }}">
+                            </div>
+                          </div>
+                        {% endif %}
+                      {% endfor %}
+                      {% if ns.count == 0 %}
+                        <div class="text-center text-muted">No hay imágenes para este pago. Usa “Detalles” para ver otros archivos.</div>
+                      {% endif %}
+                    </div>
+                    {% if ns.count > 1 %}
+                    <button class="carousel-control-prev" type="button" data-bs-target="#carouselEvid-{{ p.id }}" data-bs-slide="prev">
+                      <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                      <span class="visually-hidden">Anterior</span>
+                    </button>
+                    <button class="carousel-control-next" type="button" data-bs-target="#carouselEvid-{{ p.id }}" data-bs-slide="next">
+                      <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                      <span class="visually-hidden">Siguiente</span>
+                    </button>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                  <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">Detalles</button>
+                </div>
+              </div>
+            </div>
+          </div>
         {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
+
+  <!-- Toast container for action feedback -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1080">
+    <div id="actionToast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .evid-img.img-fit{max-height:100%;max-width:100%;object-fit:contain;cursor:zoom-in}
+    .evid-img.zoomed{max-width:none;max-height:none;width:auto;height:auto;object-fit:none;cursor:zoom-out}
+    /* Column widths for better layout */
+    .table .col-id{width:72px}
+    .table .col-valor{width:120px}
+    .table .col-medio{width:120px}
+    .table .col-fcons{width:130px}
+    .table .col-estado{width:110px}
+    .table .col-evid{width:64px}
+    .table .col-actions{width:220px}
+    @media (max-width: 576px){ .table .col-actions{width:auto} }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+  (function(){
+    function toggleZoom(img){
+      if(!img) return;
+      if(img.classList.contains('zoomed')){
+        img.classList.remove('zoomed');
+        img.style.width = '';
+        img.style.height = '';
+        if(!img.classList.contains('img-fit')) img.classList.add('img-fit');
+      }else{
+        img.classList.remove('img-fit');
+        img.classList.add('zoomed');
+        var scale = 2;
+        var nw = img.naturalWidth || 0;
+        if(nw>0){ img.style.width = (nw*scale) + 'px'; img.style.height='auto'; }
+        else { img.style.width = '150%'; }
+      }
+    }
+    document.addEventListener('click',function(e){
+      var btn=e.target.closest('[data-zoom-target]');
+      if(btn){
+        e.preventDefault();
+        var id=btn.getAttribute('data-zoom-target');
+        var car=document.getElementById(id);
+        if(!car)return;
+        var img=car.querySelector('.carousel-item.active .evid-img');
+        toggleZoom(img);
+      }
+      var imgEl=e.target.closest('.evid-img');
+      if(imgEl){toggleZoom(imgEl);}
+    });
+    var modals=document.querySelectorAll('[id^="modalEvid-"]');
+    modals.forEach(function(modal){
+      modal.addEventListener('hidden.bs.modal',function(){
+        modal.querySelectorAll('.evid-img').forEach(function(img){
+          img.classList.remove('zoomed');
+          img.style.width = '';
+          img.style.height = '';
+          if(!img.classList.contains('img-fit')) img.classList.add('img-fit');
+        });
+      });
+      var car=modal.querySelector('.carousel');
+      if(car){
+        car.addEventListener('slid.bs.carousel',function(){
+          car.querySelectorAll('.evid-img').forEach(function(img){
+            img.classList.remove('zoomed');
+            img.style.width = '';
+            img.style.height = '';
+            if(!img.classList.contains('img-fit')) img.classList.add('img-fit');
+          });
+        });
+      }
+    });
+
+    // SweetAlert2: Confirmar aprobación
+    document.addEventListener('click', function(e){
+      var approveBtn = e.target.closest('.btn-approve');
+      if(!approveBtn) return;
+      e.preventDefault();
+      var url = approveBtn.getAttribute('data-approve-url');
+      var pid = approveBtn.getAttribute('data-pid');
+      Swal.fire({
+        title: '¿Aprobar pago #' + pid + '?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, aprobar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#198754'
+      }).then(function(res){
+        if(res.isConfirmed){
+          // disable button and show spinner
+          approveBtn.disabled = true;
+          approveBtn.dataset.oldHtml = approveBtn.innerHTML;
+          approveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Aprobando...';
+          // prepare form submit
+          var form = document.getElementById('form-'+pid);
+          if(!form){
+            form = document.createElement('form');
+            form.method = 'post';
+            form.id = 'form-'+pid;
+            document.body.appendChild(form);
+          }
+          var existingMotivo = document.getElementById('motivo-'+pid);
+          if(existingMotivo && existingMotivo.parentElement === form){ existingMotivo.remove(); }
+          // set session flag for toast
+          try{ sessionStorage.setItem('vp_action', JSON.stringify({t:'approve', pid: pid})); }catch(e){}
+          form.setAttribute('action', url);
+          form.submit();
+        }
+      });
+    });
+
+    // SweetAlert2: Confirmar rechazo (usa modal para capturar motivo)
+    document.addEventListener('click', function(e){
+      var rejectBtn = e.target.closest('.btn-reject-confirm');
+      if(!rejectBtn) return;
+      e.preventDefault();
+      var url = rejectBtn.getAttribute('data-reject-url');
+      var pid = rejectBtn.getAttribute('data-pid');
+      var motivoTextarea = document.getElementById('modal-motivo-'+pid);
+      var motivo = (motivoTextarea && motivoTextarea.value || '').trim();
+      if(!motivo){
+        Swal.fire({icon:'warning', title:'Motivo requerido', text:'Por favor ingresa un motivo de rechazo.'});
+        return;
+      }
+      var modalEl = document.getElementById('modalRechazo-'+pid);
+      try { var inst = bootstrap.Modal.getInstance(modalEl); if(inst) inst.hide(); } catch(err) {}
+      Swal.fire({
+        title: '¿Rechazar pago #' + pid + '?',
+        text: motivo.length > 140 ? motivo.slice(0,140) + '…' : motivo,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, rechazar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc3545'
+      }).then(function(res){
+        if(res.isConfirmed){
+          // disable reject button and show spinner
+          rejectBtn.disabled = true;
+          rejectBtn.dataset.oldHtml = rejectBtn.innerHTML;
+          rejectBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Rechazando...';
+          var form = document.getElementById('form-'+pid);
+          if(!form){
+            form = document.createElement('form');
+            form.method = 'post';
+            form.id = 'form-'+pid;
+            document.body.appendChild(form);
+          }
+          var motivoHidden = document.getElementById('motivo-'+pid);
+          if(!motivoHidden){
+            motivoHidden = document.createElement('input');
+            motivoHidden.type = 'hidden';
+            motivoHidden.name = 'motivo';
+            motivoHidden.id = 'motivo-'+pid;
+            form.appendChild(motivoHidden);
+          }
+          motivoHidden.value = motivo;
+          // set session flag for toast
+          try{ sessionStorage.setItem('vp_action', JSON.stringify({t:'reject', pid: pid})); }catch(e){}
+          form.setAttribute('action', url);
+          form.submit();
+        }
+      });
+    });
+
+    // Show toast if coming from an action (ensure Bootstrap is loaded)
+    window.addEventListener('load', function(){
+      try{
+        var act = sessionStorage.getItem('vp_action');
+        if(act){
+          sessionStorage.removeItem('vp_action');
+          var data = {};
+          try{ data = JSON.parse(act) || {}; }catch(e){}
+          var toastEl = document.getElementById('actionToast');
+          if(toastEl){
+            var body = toastEl.querySelector('.toast-body');
+            var ok = (data.t === 'approve' || data.t === 'reject');
+            toastEl.classList.remove('text-bg-success','text-bg-danger','bg-success','bg-danger','text-white');
+            if(data.t === 'approve'){
+              body.textContent = 'Pago #' + (data.pid || '') + ' aprobado correctamente';
+              toastEl.classList.add('text-bg-success','bg-success','text-white');
+            } else if(data.t === 'reject'){
+              body.textContent = 'Pago #' + (data.pid || '') + ' rechazado correctamente';
+              toastEl.classList.add('text-bg-danger','bg-danger','text-white');
+            } else {
+              body.textContent = 'Acción completada';
+              toastEl.classList.add('text-bg-success','bg-success','text-white');
+            }
+            var toast = new bootstrap.Toast(toastEl, {delay: 3000});
+            toast.show();
+          }
+        }
+      }catch(e){}
+    });
+  })();
+  </script>
 
   <!-- PAGINACIÓN -->
   {% set pages = (total // per_page) + (1 if total % per_page else 0) %}

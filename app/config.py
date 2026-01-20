@@ -52,6 +52,9 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Timezone de referencia para filtros/visualización (almacenamos en UTC)
+    TIMEZONE = os.getenv("TIMEZONE", "America/Bogota")
+
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
     # Paths
