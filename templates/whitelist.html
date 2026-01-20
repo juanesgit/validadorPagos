@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  .section + .section { margin-top: 1rem; }
+  .section .card { border-radius: 12px; }
+  .table thead th { position: sticky; top:0; z-index:1; background:#f8f9fa; }
+  .table td, .table th { vertical-align: middle; }
+</style>
+
+<!-- Título -->
+<div class="mb-3">
+  <h3 class="mb-0">Autorizados para reportar pagos</h3>
+  <div class="text-muted small">Gestiona teléfonos permitidos, sucursales y sesiones</div>
+</div>
+
+<!-- 1) Filtros -->
+<section class="section">
+  <div class="card">
+    <div class="card-body">
+      <h6 class="mb-3">Filtros</h6>
+      <form method="get" action="{{ url_for('whitelist_bp.whitelist') }}">
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-6">
+            <label class="form-label">Buscar</label>
+            <input class="form-control" name="q" placeholder="Teléfono, sucursal, ciudad o nombre" value="{{ q }}">
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label">Estado</label>
+            <select class="form-select" name="estado">
+              <option value="">Todos</option>
+              <option value="activos" {{ 'selected' if estado=='activos' else '' }}>Activos</option>
+              <option value="inactivos" {{ 'selected' if estado=='inactivos' else '' }}>Inactivos</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label">Sociedad</label>
+            <select class="form-select" name="sociedad">
+              <option value="">Todas</option>
+              <option value="COANDES" {{ 'selected' if sociedad=='COANDES' else '' }}>COANDES</option>
+              <option value="MANCHESTER" {{ 'selected' if sociedad=='MANCHESTER' else '' }}>MANCHESTER</option>
+              <option value="ALMACENES" {{ 'selected' if sociedad=='ALMACENES' else '' }}>ALMACENES</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-2 d-grid d-md-flex gap-2">
+            <button class="btn btn-primary w-100">Aplicar</button>
+            {% if q or estado %}
+              <a class="btn btn-outline-secondary w-100" href="{{ url_for('whitelist_bp.whitelist') }}">Limpiar</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mt-2 text-muted small">Total: {{ total }} registros</div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- 2) Acciones globales -->
+<section class="section">
+  <div class="card">
+    <div class="card-body d-flex flex-wrap gap-2">
+      <h6 class="mb-0 me-auto align-self-center">Acciones</h6>
+
+      <!-- Nuevo autorizado (modal) -->
+      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCreate">
+        Nuevo autorizado
+      </button>
+
+      <!-- Importar CSV (modal) -->
+      <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#modalImport">
+        Importar CSV
+      </button>
+
+      <a class="btn btn-outline-secondary" href="{{ url_for('whitelist_bp.whitelist_export') }}">Exportar CSV</a>
+      <form method="post" action="{{ url_for('whitelist_bp.whitelist_revoke_all') }}"
+            onsubmit="return confirm('¿Revocar TODAS las sesiones activas?')">
+        <button class="btn btn-outline-danger">Revocar todas las sesiones</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- 3) Listado -->
+<section class="section">
+  <div class="card">
+    <div class="card-body">
+      <h6 class="mb-3">Listado</h6>
+
+      {% if registros|length == 0 %}
+        <div class="text-center py-4 text-muted">No hay registros. Ajusta filtros o agrega un autorizado.</div>
+      {% else %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Teléfono</th>
+              <th>Sucursal</th>
+              <th>Ciudad</th>
+              <th>Sociedad</th>
+              <th>Nombre</th>
+              <th>Estado</th>
+              <th class="text-end" style="width: 320px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for r in registros %}
+            <tr>
+              <td class="fw-semibold">{{ r.phone_e164 }}</td>
+              <td>{{ r.sucursal or '—' }}</td>
+              <td>{{ r.ciudad or '—' }}</td>
+              <td>{{ r.sociedad.value if r.sociedad else '—' }}</td>
+              <td>{{ r.nombre or '—' }}</td>
+              <td>
+                <span class="badge {{ 'bg-success' if r.enabled else 'bg-secondary' }}">
+                  {{ 'Habilitado' if r.enabled else 'Inhabilitado' }}
+                </span>
+              </td>
+              <td class="text-end">
+                <div class="d-inline-flex flex-wrap gap-2 justify-content-end">
+                  <!-- Editar (modal por fila) -->
+                  <button type="button" class="btn btn-sm btn-outline-primary"
+                          data-bs-toggle="modal" data-bs-target="#editModal-{{ r.id }}">
+                    Editar
+                  </button>
+
+                  <!-- Activar/Desactivar -->
+                  <form method="post" action="{{ url_for('whitelist_bp.whitelist_toggle', rid=r.id) }}">
+                    <button class="btn btn-sm btn-outline-warning">{{ 'Desactivar' if r.enabled else 'Activar' }}</button>
+                  </form>
+
+                  <!-- Revocar sesión -->
+                  <form method="post" action="{{ url_for('whitelist_bp.whitelist_revoke', rid=r.id) }}"
+                        onsubmit="return confirm('¿Revocar sesiones activas para {{ r.phone_e164 }}?')">
+                    <button class="btn btn-sm btn-outline-secondary">Revocar</button>
+                  </form>
+
+                  <!-- Eliminar -->
+                  <form method="post" action="{{ url_for('whitelist_bp.whitelist_delete', rid=r.id) }}"
+                        onsubmit="return confirm('¿Eliminar definitivamente {{ r.phone_e164 }}?')">
+                    <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+
+            <!-- MODAL: Editar autorizado -->
+            <div class="modal fade" id="editModal-{{ r.id }}" tabindex="-1"
+                 aria-labelledby="editModalLabel-{{ r.id }}" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-md">
+                <div class="modal-content">
+                  <form method="post" action="{{ url_for('whitelist_bp.whitelist_update', rid=r.id) }}">
+                    <div class="modal-header">
+                      <h5 class="modal-title" id="editModalLabel-{{ r.id }}">Editar autorizado</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                      <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input name="phone_e164" class="form-control" value="{{ r.phone_e164 }}">
+                      </div>
+                      <div class="row g-2">
+                        <div class="col-12 col-md-3">
+                          <label class="form-label">Sucursal</label>
+                          <input name="sucursal" class="form-control" value="{{ r.sucursal or '' }}">
+                        </div>
+                        <div class="col-12 col-md-3">
+                          <label class="form-label">Ciudad</label>
+                          <input name="ciudad" class="form-control" value="{{ r.ciudad or '' }}">  <!-- NUEVO -->
+                        </div>
+                        <div class="col-12 col-md-3">
+                          <label class="form-label">Sociedad</label>
+                          <select name="sociedad" class="form-select" required>
+                            <option value="">(sin especificar)</option>
+                            <option value="COANDES" {{ 'selected' if r.sociedad and r.sociedad.value=='COANDES' else '' }}>COANDES</option>
+                            <option value="MANCHESTER" {{ 'selected' if r.sociedad and r.sociedad.value=='MANCHESTER' else '' }}>MANCHESTER</option>
+                            <option value="ALMACENES" {{ 'selected' if r.sociedad and r.sociedad.value=='ALMACENES' else '' }}>ALMACENES</option>
+                          </select>
+                        </div>
+                        <div class="col-12 col-md-3">
+                          <label class="form-label">Nombre</label>
+                          <input name="nombre" class="form-control" value="{{ r.nombre or '' }}">
+                        </div>
+                      </div>
+                      <div class="form-check mt-3">
+                        <input type="checkbox" class="form-check-input" id="enabled-{{ r.id }}" name="enabled"
+                               {{ 'checked' if r.enabled else '' }}>
+                        <label class="form-check-label" for="enabled-{{ r.id }}">Habilitado</label>
+                      </div>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                      <button class="btn btn-primary">Guardar cambios</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+
+    {% set pages = (total // per_page) + (1 if total % per_page else 0) %}
+    {% if pages > 1 %}
+    <div class="card-footer bg-white">
+      <nav aria-label="Paginación">
+        <ul class="pagination justify-content-end mb-0">
+          <li class="page-item {{ 'disabled' if page<=1 }}">
+            <a class="page-link" href="{{ url_for('whitelist_bp.whitelist', q=q, estado=estado, sociedad=sociedad, page=page-1) }}">&laquo; Anterior</a>
+          </li>
+          {% for p in range(1, pages+1) %}
+            <li class="page-item {{ 'active' if p==page }}">
+              <a class="page-link" href="{{ url_for('whitelist_bp.whitelist', q=q, estado=estado, sociedad=sociedad, page=p) }}">{{ p }}</a>
+            </li>
+          {% endfor %}
+          <li class="page-item {{ 'disabled' if page>=pages }}">
+            <a class="page-link" href="{{ url_for('whitelist_bp.whitelist', q=q, estado=estado, sociedad=sociedad, page=page+1) }}">Siguiente &raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- MODAL: Nuevo autorizado -->
+<div class="modal fade" id="modalCreate" tabindex="-1" aria-labelledby="modalCreateLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('whitelist_bp.whitelist_create') }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalCreateLabel">Nuevo autorizado / Actualizar</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Teléfono</label>
+            <input name="phone_e164" class="form-control" placeholder="+57300xxxxxxx" required>
+            <div class="form-text">E.164 o 10 dígitos (se normaliza a +57).</div>
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Sucursal</label>
+              <input name="sucursal" class="form-control" placeholder="BUCARAMANGA-CENTRO">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Ciudad</label>
+              <input name="ciudad" class="form-control" placeholder="Bucaramanga">  <!-- NUEVO -->
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Sociedad</label>
+              <select name="sociedad" class="form-select" required>
+                <option value="COANDES">COANDES</option>
+                <option value="MANCHESTER">MANCHESTER</option>
+                <option value="ALMACENES">ALMACENES</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Nombre</label>
+              <input name="nombre" class="form-control" placeholder="Vendedor / Alias">
+            </div>
+          </div>
+          <div class="form-check mt-3">
+            <input type="checkbox" class="form-check-input" id="enabledCreate" name="enabled" checked>
+            <label class="form-check-label" for="enabledCreate">Habilitado</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-success">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Importar CSV -->
+<div class="modal fade" id="modalImport" tabindex="-1" aria-labelledby="modalImportLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('whitelist_bp.whitelist_import') }}" enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalImportLabel">Importar autorizados desde CSV</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Archivo CSV</label>
+            <input type="file" name="file" accept=".csv" class="form-control" required>
+            <div class="form-text">
+              Columnas: <code>phone</code>/<code>phone_e164</code>, <code>sucursal</code>, <code>ciudad</code>, <code>sociedad</code>, <code>nombre</code>, <code>enabled</code>.
+            </div>
+          </div>
+          <div class="alert alert-light border small mb-0">
+            Consejos:
+            <ul class="mb-0">
+              <li>Codificación UTF-8.</li>
+              <li>Hace <b>upsert</b> por teléfono (normalizado E.164).</li>
+              <li>Usa “Exportar CSV” para plantilla.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <a class="btn btn-link me-auto" href="{{ url_for('whitelist_bp.whitelist_export') }}">Descargar plantilla</a>
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-outline-dark">Importar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+
+
+
+
+

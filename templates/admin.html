@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- ENCABEZADO + EXPORTACIONES -->
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <div>
+    <h3 class="mb-0">Bandeja de pagos</h3>
+    <div class="text-muted small">
+      {% set start = (page-1)*per_page + 1 if total else 0 %}
+      {% set end = (page-1)*per_page + (pagos|length) %}
+      Mostrando {{ start }}–{{ end }} de {{ total }}
+    </div>
+    {% if counts_by_status %}
+    <div class="mt-1 small">
+      <a class="badge bg-secondary text-decoration-none me-1"
+         href="{{ url_for('admin_bp.admin', estado='PENDIENTE', sociedad=sociedad if sociedad else None, q=q if q else None, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None, per_page=per_page) }}">
+        Pendientes: {{ counts_by_status['PENDIENTE'] }}
+      </a>
+      <a class="badge bg-success text-decoration-none me-1"
+         href="{{ url_for('admin_bp.admin', estado='APROBADO', sociedad=sociedad if sociedad else None, q=q if q else None, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None, per_page=per_page) }}">
+        Aprobados: {{ counts_by_status['APROBADO'] }}
+      </a>
+      <a class="badge bg-danger text-decoration-none"
+         href="{{ url_for('admin_bp.admin', estado='RECHAZADO', sociedad=sociedad if sociedad else None, q=q if q else None, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None, per_page=per_page) }}">
+        Rechazados: {{ counts_by_status['RECHAZADO'] }}
+      </a>
+    </div>
+    <div class="mt-1 small text-muted">
+      Σ Total filtrado: ${{ "{:,}".format(sum_total or 0) }}
+      &nbsp;|&nbsp; Pend: ${{ "{:,}".format(sums_by_status['PENDIENTE'] or 0) }}
+      &nbsp;·&nbsp; Apr: ${{ "{:,}".format(sums_by_status['APROBADO'] or 0) }}
+      &nbsp;·&nbsp; Rech: ${{ "{:,}".format(sums_by_status['RECHAZADO'] or 0) }}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="d-flex gap-2">
+    <!-- Exportar TODO (respeta filtro de estado si existe) -->
+    <a class="btn btn-outline-success btn-sm"
+       href="{{ url_for('admin_bp.export_payments_excel', estado=estado if estado else None, sociedad=sociedad if sociedad else None, q=q if q else None, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None) }}">
+      Exportar Excel
+    </a>
+    <!-- Exportar TODO con hoja de imágenes -->
+    <a class="btn btn-success btn-sm"
+       href="{{ url_for('admin_bp.export_payments_excel', estado=estado if estado else None, sociedad=sociedad if sociedad else None, q=q if q else None, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None, imagenes=1) }}">
+      Excel + Imágenes
+    </a>
+  </div>
+</div>
+
+<!-- CONTROLES: BÚSQUEDA / FILTRO ESTADO / TAMAÑO PÁGINA -->
+<form method="get" class="row g-2 align-items-end mb-3">
+  <div class="col-12 col-md-4 col-lg-5">
+    <label class="form-label mb-0 small">Buscar</label>
+    <input type="text" class="form-control form-control-sm" name="q" value="{{ q or '' }}" placeholder="Cliente, medio o sucursal">
+  </div>
+  <div class="col-6 col-md-3 col-lg-3">
+    <label class="form-label mb-0 small">Estado</label>
+    <select class="form-select form-select-sm" name="estado" onchange="this.form.submit()">
+      <option value="">Todos</option>
+      <option value="PENDIENTE" {{ 'selected' if estado=='PENDIENTE' else '' }}>Pendiente</option>
+      <option value="APROBADO"  {{ 'selected' if estado=='APROBADO'  else '' }}>Aprobado</option>
+      <option value="RECHAZADO" {{ 'selected' if estado=='RECHAZADO' else '' }}>Rechazado</option>
+    </select>
+  </div>
+  <div class="col-6 col-md-3 col-lg-2">
+    <label class="form-label mb-0 small">Sociedad</label>
+    <select class="form-select form-select-sm" name="sociedad" onchange="this.form.submit()">
+      <option value="">Todas</option>
+      <option value="COANDES" {{ 'selected' if sociedad=='COANDES' else '' }}>COANDES</option>
+      <option value="MANCHESTER" {{ 'selected' if sociedad=='MANCHESTER' else '' }}>MANCHESTER</option>
+      <option value="ALMACENES" {{ 'selected' if sociedad=='ALMACENES' else '' }}>ALMACENES</option>
+    </select>
+  </div>
+  <div class="col-6 col-md-2 col-lg-2">
+    <label class="form-label mb-0 small">Por página</label>
+    <select class="form-select form-select-sm" name="per_page" onchange="this.form.submit()">
+      {% for n in [10,25,50,100] %}
+        <option value="{{ n }}" {{ 'selected' if per_page==n else '' }}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-6 col-md-2 col-lg-2">
+    <label class="form-label mb-0 small">Desde</label>
+    <input type="date" class="form-control form-control-sm" name="desde" value="{{ desde or '' }}">
+  </div>
+  <div class="col-6 col-md-2 col-lg-2">
+    <label class="form-label mb-0 small">Hasta</label>
+    <input type="date" class="form-control form-control-sm" name="hasta" value="{{ hasta or '' }}">
+  </div>
+  <div class="col-6 col-md-2 col-lg-2">
+    <label class="form-label mb-0 small">Valor mín</label>
+    <input type="number" class="form-control form-control-sm" name="valor_min" value="{{ valor_min or '' }}" min="0" step="1">
+  </div>
+  <div class="col-6 col-md-2 col-lg-2">
+    <label class="form-label mb-0 small">Valor máx</label>
+    <input type="number" class="form-control form-control-sm" name="valor_max" value="{{ valor_max or '' }}" min="0" step="1">
+  </div>
+  <input type="hidden" name="page" value="1">
+  <div class="col-6 col-md-3 col-lg-2 text-end">
+    <button type="submit" class="btn btn-primary btn-sm me-1">Aplicar</button>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_bp.admin') }}">Limpiar</a>
+  </div>
+</form>
+
+<!-- TABLA -->
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Cliente</th>
+            <th>Valor</th>
+            <th>Medio</th>
+            <th>Sucursal</th>
+            <th>F. consignación</th>
+            <th>Sociedad</th>
+            <th>Estado</th>
+            <th>Evidencias</th>
+            <th style="width: 340px;" class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in pagos %}
+          <tr>
+            <td>#{{ p.id }}</td>
+            <td>{{ p.cliente or p.referencia }}</td>
+            <td>${{ "{:,}".format(p.valor or 0) }}</td>
+            <td>{{ p.medio_pago }}</td>
+            <td>{{ p.sucursal }}</td>
+            <td>{{ p.fecha_consignacion.isoformat() if p.fecha_consignacion else '—' }}</td>
+            <td>{{ p.sociedad.value if p.sociedad else '—' }}</td>
+            <td>
+              <span class="badge {{ 'bg-secondary' if p.estado.value=='PENDIENTE' else ('bg-success' if p.estado.value=='APROBADO' else 'bg-danger') }}">
+                {{ p.estado.value }}
+              </span>
+            </td>
+            <td>
+              {% if p.evidences|length == 0 %}
+                <span class="text-muted">—</span>
+              {% else %}
+                {% for ev in p.evidences %}
+                  <a class="btn btn-link btn-sm p-0 me-2"
+                     href="{{ url_for('admin_bp.evidence_view', evid_id=ev.id) }}"
+                     target="_blank">Ver {{ loop.index }}</a>
+                {% endfor %}
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if p.estado.value == 'PENDIENTE' %}
+              <!-- Un solo form con dos acciones (formaction) para evitar problemas de sesión o forms anidados -->
+              <form method="post" class="d-inline-block m-0 p-0">
+                <div class="d-inline-flex flex-wrap gap-2 justify-content-end align-items-center">
+                  <div class="input-group input-group-sm" style="width: 260px;">
+                    <input name="motivo" class="form-control" placeholder="Motivo rechazo">
+                    <button type="submit" class="btn btn-danger"
+                            formaction="{{ url_for('admin_bp.reject', pid=p.id) }}">
+                      Rechazar
+                    </button>
+                  </div>
+                  <button type="submit" class="btn btn-success btn-sm"
+                          formaction="{{ url_for('admin_bp.approve', pid=p.id) }}">
+                    Aprobar
+                  </button>
+                </div>
+              </form>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAGINACIÓN -->
+  {% set pages = (total // per_page) + (1 if total % per_page else 0) %}
+  {% if pages > 1 %}
+  <div class="card-footer bg-white">
+    <nav aria-label="Paginación">
+      <ul class="pagination justify-content-end mb-0">
+        <li class="page-item {{ 'disabled' if page<=1 }}">
+          <a class="page-link"
+             href="{{ url_for('admin_bp.admin', page=page-1, per_page=per_page, estado=estado, sociedad=sociedad, q=q, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None) }}">&laquo; Anterior</a>
+        </li>
+
+        {# Compacta: primeras/últimas + vecinas #}
+        {% set window = 2 %}
+        {% for pnum in range(1, pages+1) %}
+          {% if pnum == 1 or pnum == pages or (pnum >= page-window and pnum <= page+window) %}
+            <li class="page-item {{ 'active' if pnum==page }}">
+              <a class="page-link"
+                 href="{{ url_for('admin_bp.admin', page=pnum, per_page=per_page, estado=estado, sociedad=sociedad, q=q, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None) }}">{{ pnum }}</a>
+            </li>
+          {% elif pnum == 2 and page-window > 2 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% elif pnum == pages-1 and page+window < pages-1 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+
+        <li class="page-item {{ 'disabled' if page>=pages }}">
+          <a class="page-link"
+             href="{{ url_for('admin_bp.admin', page=page+1, per_page=per_page, estado=estado, sociedad=sociedad, q=q, desde=desde if desde else None, hasta=hasta if hasta else None, valor_min=valor_min if valor_min else None, valor_max=valor_max if valor_max else None) }}">Siguiente &raquo;</a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+
