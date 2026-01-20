@@ -79,10 +79,12 @@ def _build_calendar_kb(year, month):
     weeks = cal.monthdayscalendar(y, m)
     title = f"{_spanish_month(m)} {y}"
     rows = []
+    today = _dt.date.today()
+    next_cb = "CAL_NOP" if (y, m) >= (today.year, today.month) else f"CAL_NAV:{y}-{m:02d}:next"
     rows.append([
         {"text": "◀", "callback_data": f"CAL_NAV:{y}-{m:02d}:prev"},
         {"text": title, "callback_data": "CAL_NOP"},
-        {"text": "▶", "callback_data": f"CAL_NAV:{y}-{m:02d}:next"},
+        {"text": "▶", "callback_data": next_cb},
     ])
     rows.append([
         {"text": "Lu", "callback_data": "CAL_NOP"},
@@ -99,8 +101,10 @@ def _build_calendar_kb(year, month):
             if d == 0:
                 row.append({"text": " ", "callback_data": "CAL_NOP"})
             else:
+                date_obj = _dt.date(y, m, d)
                 day = f"{y}-{m:02d}-{d:02d}"
-                row.append({"text": str(d), "callback_data": f"CAL_SET:{day}"})
+                cb = "CAL_NOP" if date_obj > today else f"CAL_SET:{day}"
+                row.append({"text": str(d), "callback_data": cb})
         rows.append(row)
     rows.append([
         {"text": "Hoy", "callback_data": "CAL_TODAY"},
@@ -155,6 +159,10 @@ def telegram_webhook():
                 except Exception:
                     answer_callback_query(cb_id)
                     return {"ok": True}
+                # Clamp navigation so it never goes beyond current month
+                today = _dt.date.today()
+                if (y, m) > (today.year, today.month):
+                    y, m = today.year, today.month
                 kb, _ = _build_calendar_kb(y, m)
                 try:
                     edit_message_reply_markup(chat_id, message_id, kb)
@@ -176,13 +184,19 @@ def telegram_webhook():
                         answer_callback_query(cb_id, "No encontrado")
                         return {"ok": True}
                     try:
-                        p.fecha_consignacion = _dt.date.fromisoformat(day)
+                        selected = _dt.date.fromisoformat(day)
+                        today = _dt.date.today()
+                        if selected > today:
+                            answer_callback_query(cb_id, "Fecha futura no permitida")
+                            return {"ok": True}
+                        p.fecha_consignacion = selected
                         db.session.commit()
+                        disp = selected.strftime("%d/%m/%Y")
                         try:
-                            edit_message_text(chat_id, message_id, f"✅ Fecha seleccionada: <b>{day}</b>")
+                            edit_message_text(chat_id, message_id, f"✅ Fecha seleccionada: <b>{disp}</b>")
                         except Exception:
                             pass
-                        send_message(chat_id, f"✅ Fecha registrada: <b>{day}</b>\nID solicitud: <b>{p.id}</b>\nCliente: <b>{p.cliente}</b>\nEstado: <b>{p.estado.value}</b>.",)
+                        send_message(chat_id, f"✅ Fecha registrada: <b>{disp}</b>\nID solicitud: <b>{p.id}</b>\nCliente: <b>{p.cliente}</b>\nEstado: <b>{p.estado.value}</b>.",)
                         clear_state(from_user)
                         answer_callback_query(cb_id, "Fecha aplicada")
                         return {"ok": True}
