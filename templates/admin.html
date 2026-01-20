@@ -48,58 +48,73 @@
   </div>
 </div>
 
-<!-- CONTROLES: BÚSQUEDA / FILTRO ESTADO / TAMAÑO PÁGINA -->
-<form method="get" class="row g-2 align-items-end mb-3">
-  <div class="col-12 col-md-4 col-lg-5">
-    <label class="form-label mb-0 small">Buscar</label>
-    <input type="text" class="form-control form-control-sm" name="q" value="{{ q or '' }}" placeholder="Cliente, medio o sucursal">
+<!-- CONTROLES: BÚSQUEDA / FILTROS -->
+<form method="get" class="card card-body py-2 px-3 mb-3 sticky-top shadow-sm">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-lg-4">
+      <label class="form-label mb-0 small">Buscar</label>
+      <input type="text" class="form-control form-control-sm" name="q" value="{{ q or '' }}" placeholder="Cliente, medio o sucursal">
+    </div>
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label mb-0 small">Estado</label>
+      <select class="form-select form-select-sm" name="estado" onchange="this.form.submit()">
+        <option value="">Todos</option>
+        <option value="PENDIENTE" {{ 'selected' if estado=='PENDIENTE' else '' }}>Pendiente</option>
+        <option value="APROBADO"  {{ 'selected' if estado=='APROBADO'  else '' }}>Aprobado</option>
+        <option value="RECHAZADO" {{ 'selected' if estado=='RECHAZADO' else '' }}>Rechazado</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label mb-0 small">Sociedad</label>
+      <select class="form-select form-select-sm" name="sociedad" onchange="this.form.submit()">
+        <option value="">Todas</option>
+        <option value="COANDES" {{ 'selected' if sociedad=='COANDES' else '' }}>COANDES</option>
+        <option value="MANCHESTER" {{ 'selected' if sociedad=='MANCHESTER' else '' }}>MANCHESTER</option>
+        <option value="ALMACENES" {{ 'selected' if sociedad=='ALMACENES' else '' }}>ALMACENES</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2 col-lg-1">
+      <label class="form-label mb-0 small">Por página</label>
+      <select class="form-select form-select-sm" name="per_page" onchange="this.form.submit()">
+        {% for n in [10,25,50,100] %}
+          <option value="{{ n }}" {{ 'selected' if per_page==n else '' }}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-3">
+      <input type="hidden" name="page" value="1">
+      <div class="d-grid gap-2 d-sm-flex justify-content-lg-end">
+        <button type="submit" class="btn btn-primary btn-sm">Aplicar</button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_bp.admin') }}">Limpiar</a>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filtrosAvanzados" aria-expanded="{{ 'true' if (desde or hasta or valor_min or valor_max) else 'false' }}" aria-controls="filtrosAvanzados">Más filtros</button>
+      </div>
+    </div>
   </div>
-  <div class="col-6 col-md-3 col-lg-3">
-    <label class="form-label mb-0 small">Estado</label>
-    <select class="form-select form-select-sm" name="estado" onchange="this.form.submit()">
-      <option value="">Todos</option>
-      <option value="PENDIENTE" {{ 'selected' if estado=='PENDIENTE' else '' }}>Pendiente</option>
-      <option value="APROBADO"  {{ 'selected' if estado=='APROBADO'  else '' }}>Aprobado</option>
-      <option value="RECHAZADO" {{ 'selected' if estado=='RECHAZADO' else '' }}>Rechazado</option>
-    </select>
-  </div>
-  <div class="col-6 col-md-3 col-lg-2">
-    <label class="form-label mb-0 small">Sociedad</label>
-    <select class="form-select form-select-sm" name="sociedad" onchange="this.form.submit()">
-      <option value="">Todas</option>
-      <option value="COANDES" {{ 'selected' if sociedad=='COANDES' else '' }}>COANDES</option>
-      <option value="MANCHESTER" {{ 'selected' if sociedad=='MANCHESTER' else '' }}>MANCHESTER</option>
-      <option value="ALMACENES" {{ 'selected' if sociedad=='ALMACENES' else '' }}>ALMACENES</option>
-    </select>
-  </div>
-  <div class="col-6 col-md-2 col-lg-2">
-    <label class="form-label mb-0 small">Por página</label>
-    <select class="form-select form-select-sm" name="per_page" onchange="this.form.submit()">
-      {% for n in [10,25,50,100] %}
-        <option value="{{ n }}" {{ 'selected' if per_page==n else '' }}>{{ n }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-6 col-md-2 col-lg-2">
-    <label class="form-label mb-0 small">Desde</label>
-    <input type="date" class="form-control form-control-sm" name="desde" value="{{ desde or '' }}">
-  </div>
-  <div class="col-6 col-md-2 col-lg-2">
-    <label class="form-label mb-0 small">Hasta</label>
-    <input type="date" class="form-control form-control-sm" name="hasta" value="{{ hasta or '' }}">
-  </div>
-  <div class="col-6 col-md-2 col-lg-2">
-    <label class="form-label mb-0 small">Valor mín</label>
-    <input type="number" class="form-control form-control-sm" name="valor_min" value="{{ valor_min or '' }}" min="0" step="1">
-  </div>
-  <div class="col-6 col-md-2 col-lg-2">
-    <label class="form-label mb-0 small">Valor máx</label>
-    <input type="number" class="form-control form-control-sm" name="valor_max" value="{{ valor_max or '' }}" min="0" step="1">
-  </div>
-  <input type="hidden" name="page" value="1">
-  <div class="col-6 col-md-3 col-lg-2 text-end">
-    <button type="submit" class="btn btn-primary btn-sm me-1">Aplicar</button>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_bp.admin') }}">Limpiar</a>
+  <div class="collapse mt-2 {{ 'show' if (desde or hasta or valor_min or valor_max) else '' }}" id="filtrosAvanzados">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg-5">
+        <label class="form-label mb-0 small">Rango de fechas</label>
+        <div class="row g-2">
+          <div class="col-6">
+            <input type="date" class="form-control form-control-sm" name="desde" value="{{ desde or '' }}" placeholder="Desde">
+          </div>
+          <div class="col-6">
+            <input type="date" class="form-control form-control-sm" name="hasta" value="{{ hasta or '' }}" placeholder="Hasta">
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-5">
+        <label class="form-label mb-0 small">Rango de valor</label>
+        <div class="row g-2">
+          <div class="col-6">
+            <input type="number" class="form-control form-control-sm" name="valor_min" value="{{ valor_min or '' }}" min="0" step="1" placeholder="Mín">
+          </div>
+          <div class="col-6">
+            <input type="number" class="form-control form-control-sm" name="valor_max" value="{{ valor_max or '' }}" min="0" step="1" placeholder="Máx">
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </form>
 
@@ -121,7 +136,7 @@
             <th class="d-none d-lg-table-cell text-nowrap">Actualizado (local)</th>
             <th class="col-estado text-nowrap">Estado</th>
             <th class="col-evid text-center d-none d-sm-table-cell">Evidencias</th>
-            <th class="col-actions">Acciones</th>
+            <th class="col-actions text-center">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -152,30 +167,32 @@
                 <span class="badge bg-secondary">0</span>
               {% endif %}
             </td>
-            <td class="col-actions text-nowrap">
+            <td class="col-actions text-center text-md-start text-nowrap">
               {% if p.estado.value == 'PENDIENTE' %}
                 <div class="btn-group">
-                  <button type="button" class="btn btn-success btn-sm btn-approve"
+                  <button type="button" class="btn btn-success btn-sm btn-approve" title="Aprobar" aria-label="Aprobar"
                           data-approve-url="{{ url_for('admin_bp.approve', pid=p.id) }}"
-                          data-pid="{{ p.id }}">Aprobar</button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-                    <span class="visually-hidden">Toggle</span>
+                          data-pid="{{ p.id }}">
+                    <i class="bi bi-check-lg"></i><span class="ms-1 d-none d-sm-inline">Apr</span>
                   </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li>
-                      <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">Detalles</a>
-                    </li>
-                    <li>
-                      <a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#modalRechazo-{{ p.id }}">Rechazar…</a>
-                    </li>
-                  </ul>
+                  <button type="button" class="btn btn-outline-danger btn-sm" title="Rechazar" aria-label="Rechazar"
+                          data-bs-toggle="modal" data-bs-target="#modalRechazo-{{ p.id }}">
+                    <i class="bi bi-x-circle"></i><span class="ms-1 d-none d-sm-inline">Rech</span>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" title="Detalles" aria-label="Detalles"
+                          data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">
+                    <i class="bi bi-eye"></i><span class="ms-1 d-none d-sm-inline">Det</span>
+                  </button>
                 </div>
                 <form method="post" id="form-{{ p.id }}" class="d-none">
                   <input type="hidden" name="motivo" id="motivo-{{ p.id }}">
                 </form>
               {% else %}
                 <div class="btn-group">
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">Detalles</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" title="Detalles" aria-label="Detalles"
+                          data-bs-toggle="modal" data-bs-target="#modalPago-{{ p.id }}">
+                    <i class="bi bi-eye"></i><span class="ms-1 d-none d-sm-inline">Det</span>
+                  </button>
                 </div>
               {% endif %}
             </td>
@@ -321,7 +338,7 @@
     .table .col-fcons{width:130px}
     .table .col-estado{width:110px}
     .table .col-evid{width:64px}
-    .table .col-actions{width:220px}
+    .table .col-actions{width:180px}
     @media (max-width: 576px){ .table .col-actions{width:auto} }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -473,6 +490,12 @@
     // Show toast if coming from an action (ensure Bootstrap is loaded)
     window.addEventListener('load', function(){
       try{
+        // Enable Bootstrap tooltips for action buttons
+        try{
+          var ttEls = document.querySelectorAll('.col-actions [title]');
+          ttEls.forEach(function(el){ new bootstrap.Tooltip(el, {container:'body', trigger:'hover focus', placement:'top'}); });
+        }catch(e){}
+
         var act = sessionStorage.getItem('vp_action');
         if(act){
           sessionStorage.removeItem('vp_action');

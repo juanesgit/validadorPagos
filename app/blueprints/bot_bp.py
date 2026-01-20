@@ -11,6 +11,9 @@ from ..models import (
 )
 from ..services.telegram import (
     send_message,
+    edit_message_text,
+    edit_message_reply_markup,
+    answer_callback_query,
     reply_kb,
     MAIN_KB,
     CANCEL_KB,
@@ -63,9 +66,134 @@ def clear_state(uid):
         db.session.commit()
 
 
+# Calendario inline
+def _spanish_month(m):
+    names = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+    return names[m-1] if 1 <= m <= 12 else str(m)
+
+
+def _build_calendar_kb(year, month):
+    import calendar, datetime as _dt
+    y, m = year, month
+    cal = calendar.Calendar(firstweekday=0)
+    weeks = cal.monthdayscalendar(y, m)
+    title = f"{_spanish_month(m)} {y}"
+    rows = []
+    rows.append([
+        {"text": "◀", "callback_data": f"CAL_NAV:{y}-{m:02d}:prev"},
+        {"text": title, "callback_data": "CAL_NOP"},
+        {"text": "▶", "callback_data": f"CAL_NAV:{y}-{m:02d}:next"},
+    ])
+    rows.append([
+        {"text": "Lu", "callback_data": "CAL_NOP"},
+        {"text": "Ma", "callback_data": "CAL_NOP"},
+        {"text": "Mi", "callback_data": "CAL_NOP"},
+        {"text": "Ju", "callback_data": "CAL_NOP"},
+        {"text": "Vi", "callback_data": "CAL_NOP"},
+        {"text": "Sa", "callback_data": "CAL_NOP"},
+        {"text": "Do", "callback_data": "CAL_NOP"},
+    ])
+    for w in weeks:
+        row = []
+        for i, d in enumerate(w):
+            if d == 0:
+                row.append({"text": " ", "callback_data": "CAL_NOP"})
+            else:
+                day = f"{y}-{m:02d}-{d:02d}"
+                row.append({"text": str(d), "callback_data": f"CAL_SET:{day}"})
+        rows.append(row)
+    rows.append([
+        {"text": "Hoy", "callback_data": "CAL_TODAY"},
+        {"text": "Cancelar", "callback_data": "CAL_CANCEL"},
+    ])
+    return {"inline_keyboard": rows}, title
+
+
 @bot_bp.post("/telegram/webhook")
 def telegram_webhook():
     update = request.get_json(silent=True) or {}
+    cb = update.get("callback_query")
+    if cb:
+        chat_id = (cb.get("message") or {}).get("chat", {}).get("id")
+        from_user = (cb.get("from") or {}).get("id")
+        message_id = (cb.get("message") or {}).get("message_id")
+        data_cb = cb.get("data") or ""
+        cb_id = cb.get("id")
+        # Only handle our calendar callbacks
+        if data_cb.startswith("CAL_"):
+            import datetime as _dt
+            step, stdata = get_state(from_user)
+            if data_cb == "CAL_NOP":
+                answer_callback_query(cb_id)
+                return {"ok": True}
+            if data_cb == "CAL_CANCEL":
+                clear_state(from_user)
+                try:
+                    edit_message_text(chat_id, message_id, "❌ Operación cancelada.")
+                except Exception:
+                    pass
+                answer_callback_query(cb_id, "Cancelado")
+                return {"ok": True}
+            if data_cb == "CAL_TODAY":
+                day = _dt.date.today().isoformat()
+                data_cb = f"CAL_SET:{day}"
+            if data_cb.startswith("CAL_NAV:"):
+                try:
+                    _, rest = data_cb.split(":", 1)
+                    ym, direction = rest.split(":")
+                    y, m = [int(x) for x in ym.split("-")]
+                    if direction == "next":
+                        if m == 12:
+                            y += 1; m = 1
+                        else:
+                            m += 1
+                    else:
+                        if m == 1:
+                            y -= 1; m = 12
+                        else:
+                            m -= 1
+                except Exception:
+                    answer_callback_query(cb_id)
+                    return {"ok": True}
+                kb, _ = _build_calendar_kb(y, m)
+                try:
+                    edit_message_reply_markup(chat_id, message_id, kb)
+                except Exception:
+                    pass
+                answer_callback_query(cb_id)
+                return {"ok": True}
+            if data_cb.startswith("CAL_SET:"):
+                _, day = data_cb.split(":", 1)
+                if step == "ASK_FECHA_CONSIG":
+                    pid = (stdata or {}).get("pid")
+                    if not pid:
+                        clear_state(from_user)
+                        answer_callback_query(cb_id, "Sin contexto")
+                        return {"ok": True}
+                    p = PaymentRequest.query.get(pid)
+                    if not p:
+                        clear_state(from_user)
+                        answer_callback_query(cb_id, "No encontrado")
+                        return {"ok": True}
+                    try:
+                        p.fecha_consignacion = _dt.date.fromisoformat(day)
+                        db.session.commit()
+                        try:
+                            edit_message_text(chat_id, message_id, f"✅ Fecha seleccionada: <b>{day}</b>")
+                        except Exception:
+                            pass
+                        send_message(chat_id, f"✅ Fecha registrada: <b>{day}</b>\nID solicitud: <b>{p.id}</b>\nCliente: <b>{p.cliente}</b>\nEstado: <b>{p.estado.value}</b>.",)
+                        clear_state(from_user)
+                        answer_callback_query(cb_id, "Fecha aplicada")
+                        return {"ok": True}
+                    except Exception:
+                        answer_callback_query(cb_id, "Fecha inválida")
+                        return {"ok": True}
+                else:
+                    answer_callback_query(cb_id)
+                    return {"ok": True}
+        # ignore other callbacks
+        return {"ok": True}
     msg = update.get("message") or update.get("edited_message")
     if not msg:
         return {"ok": True}
@@ -196,41 +324,11 @@ def telegram_webhook():
                 return {"ok": True}
 
             if step == "ASK_FECHA_CONSIG":
+                # No aceptamos texto: mostramos calendario inline
                 import datetime as _dt
-                t = text.strip()
-                fecha = None
-                try:
-                    fecha = _dt.datetime.strptime(t, "%Y-%m-%d").date()
-                except Exception:
-                    try:
-                        fecha = _dt.datetime.strptime(t, "%d/%m/%Y").date()
-                    except Exception:
-                        fecha = None
-                if not fecha:
-                    send_message(
-                        chat_id,
-                        "⚠️ Fecha no válida. Usa formato <b>AAAA-MM-DD</b> (ej: 2025-12-30) o <b>DD/MM/AAAA</b>.",
-                        kb=CANCEL_KB,
-                    )
-                    return {"ok": True}
-                pid = (data or {}).get("pid")
-                if not pid:
-                    clear_state(from_user)
-                    send_message(chat_id, "Se perdió el contexto. Escribe <b>Reportar pago</b> para iniciar de nuevo.", kb=MAIN_KB)
-                    return {"ok": True}
-                p = PaymentRequest.query.get(pid)
-                if not p:
-                    clear_state(from_user)
-                    send_message(chat_id, "No encontré la solicitud. Escribe <b>Reportar pago</b> para iniciar de nuevo.", kb=MAIN_KB)
-                    return {"ok": True}
-                p.fecha_consignacion = fecha
-                db.session.commit()
-                send_message(
-                    chat_id,
-                    f"✅ Fecha registrada: <b>{fecha.isoformat()}</b>\nID solicitud: <b>{p.id}</b>\nCliente: <b>{p.cliente}</b>\nEstado: <b>{p.estado.value}</b>.",
-                    kb=MAIN_KB,
-                )
-                clear_state(from_user)
+                today = _dt.date.today()
+                kb, title = _build_calendar_kb(today.year, today.month)
+                send_message(chat_id, f"🗓️ Selecciona la <b>fecha de consignación</b> (usa el calendario).", kb=kb)
                 return {"ok": True}
 
             if step == "ASK_VALOR":
@@ -477,15 +575,14 @@ def telegram_webhook():
     )
     db.session.commit()
 
-    # Solicitar fecha de consignación
+    # Solicitar fecha de consignación con calendario inline
     set_state(from_user, "ASK_FECHA_CONSIG", {"pid": p.id})
+    import datetime as _dt
+    today = _dt.date.today()
+    kb, _ = _build_calendar_kb(today.year, today.month)
     send_message(
         chat_id,
-        (
-            f"✅ Comprobante recibido. ID solicitud: <b>{p.id}</b>\n"
-            "🗓️ Ingresa la <b>fecha de consignación</b> en formato <b>AAAA-MM-DD</b> (ej: 2025-12-30).\n"
-            "También acepto <b>DD/MM/AAAA</b>."
-        ),
-        kb=CANCEL_KB,
+        f"✅ Comprobante recibido. ID solicitud: <b>{p.id}</b>\n🗓️ Selecciona la <b>fecha de consignación</b> en el calendario.",
+        kb=kb,
     )
     return {"ok": True}

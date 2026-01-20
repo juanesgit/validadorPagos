@@ -33,6 +33,49 @@ def send_message(chat_id, text, reply_to=None, kb=None):
             pass
 
 
+def edit_message_text(chat_id, message_id, text, kb=None):
+    payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "HTML"}
+    if kb:
+        payload["reply_markup"] = kb
+    try:
+        requests.post(
+            f"{current_app.config['BOT_API']}/editMessageText", json=payload, timeout=15
+        )
+    except Exception as e:
+        try:
+            current_app.logger.error(f"editMessageText error: {e}")
+        except Exception:
+            pass
+
+
+def edit_message_reply_markup(chat_id, message_id, kb):
+    payload = {"chat_id": chat_id, "message_id": message_id, "reply_markup": kb}
+    try:
+        requests.post(
+            f"{current_app.config['BOT_API']}/editMessageReplyMarkup", json=payload, timeout=15
+        )
+    except Exception as e:
+        try:
+            current_app.logger.error(f"editMessageReplyMarkup error: {e}")
+        except Exception:
+            pass
+
+
+def answer_callback_query(callback_id, text=None):
+    payload = {"callback_query_id": callback_id}
+    if text:
+        payload["text"] = text
+    try:
+        requests.post(
+            f"{current_app.config['BOT_API']}/answerCallbackQuery", json=payload, timeout=15
+        )
+    except Exception as e:
+        try:
+            current_app.logger.error(f"answerCallbackQuery error: {e}")
+        except Exception:
+            pass
+
+
 def reply_kb(rows, resize=True, one_time=False):
     return {"keyboard": rows, "resize_keyboard": resize, "one_time_keyboard": one_time}
 
