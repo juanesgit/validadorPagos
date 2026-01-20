@@ -121,25 +121,26 @@
             <th class="d-none d-lg-table-cell text-nowrap">Actualizado (local)</th>
             <th class="col-estado text-nowrap">Estado</th>
             <th class="col-evid text-center d-none d-sm-table-cell">Evidencias</th>
-            <th class="col-actions text-end">Acciones</th>
+            <th class="col-actions">Acciones</th>
           </tr>
         </thead>
         <tbody>
         {% for p in pagos %}
           <tr>
             <td class="col-id text-nowrap">#{{ p.id }}</td>
-            <td class="col-cliente text-break">{{ p.cliente or p.referencia }}</td>
+            <td class="col-cliente"><span class="truncate d-block text-truncate" title="{{ p.cliente or p.referencia }}">{{ p.cliente or p.referencia }}</span></td>
             <td class="col-valor text-end text-nowrap">${{ "{:,}".format(p.valor or 0) }}</td>
             <td class="col-medio text-nowrap">{{ p.medio_pago }}</td>
-            <td class="col-sucursal text-break">{{ p.sucursal }}</td>
+            <td class="col-sucursal"><span class="truncate d-block text-truncate" title="{{ p.sucursal }}">{{ p.sucursal }}</span></td>
             <td class="col-fcons text-nowrap">{{ p.fecha_consignacion.isoformat() if p.fecha_consignacion else '—' }}</td>
             <td class="d-none d-md-table-cell col-soc text-nowrap">{{ p.sociedad.value if p.sociedad else '—' }}</td>
             <td class="d-none d-lg-table-cell text-nowrap">{{ p.created_local_str or '—' }}</td>
             <td class="d-none d-lg-table-cell text-nowrap">{{ p.updated_local_str or '—' }}</td>
             <td class="col-estado text-nowrap">
-              <span class="badge {{ 'bg-secondary' if p.estado.value=='PENDIENTE' else ('bg-success' if p.estado.value=='APROBADO' else 'bg-danger') }}">
-                {{ p.estado.value }}
-              </span>
+              {% set est = p.estado.value %}
+              {% set badge_class = 'bg-secondary' if est=='PENDIENTE' else ('bg-success' if est=='APROBADO' else 'bg-danger') %}
+              {% set abbr = 'Pen' if est=='PENDIENTE' else ('Apr' if est=='APROBADO' else 'Rech') %}
+              <span class="badge {{ badge_class }}" title="{{ est }}">{{ abbr }}</span>
             </td>
             <td class="col-evid text-center d-none d-sm-table-cell">
               {% set cnt = p.evidences|length %}
@@ -151,7 +152,7 @@
                 <span class="badge bg-secondary">0</span>
               {% endif %}
             </td>
-            <td class="col-actions text-end">
+            <td class="col-actions text-nowrap">
               {% if p.estado.value == 'PENDIENTE' %}
                 <div class="btn-group">
                   <button type="button" class="btn btn-success btn-sm btn-approve"
